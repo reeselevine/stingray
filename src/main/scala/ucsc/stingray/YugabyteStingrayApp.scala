@@ -1,8 +1,10 @@
 package ucsc.stingray
 
+
+import ucsc.stingray.YugabyteStingrayApp.Results
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-import scala.jdk.CollectionConverters._
 
 class YugabyteStingrayApp(yugabyteClient: YugabyteClient) extends StingrayApp {
 
@@ -18,10 +20,45 @@ class YugabyteStingrayApp(yugabyteClient: YugabyteClient) extends StingrayApp {
   }
 
   def run(): Future[Unit] = {
-    yugabyteClient.execute(s"SELECT * FROM $Keyspace.$TestTableName").map { results =>
-      results.all().asScala.map { row =>
-        println(s"row: ${row.getInt(0)}, x: ${row.getInt(1)}, y: ${row.getInt(2)}")
-      }
+    run(Results(0, 0), 100).map { results =>
+      println(s"Serializable: ${results.serializable}, Snapshot: ${results.snapshot}")
+    }
+  }
+
+  def run(curResults: Results, iterationsLeft: Int): Future[Results] = {
+    iterationsLeft match {
+      case 0 => Future(curResults)
+      case i =>
+        val t1 = setValue("x", "y")
+        val t2 = setValue("y", "x")
+        for {
+          _ <- t1
+          _ <- t2
+          (x, y) <- checkRow("after")
+          newResults = if (x == y)
+            curResults.copy(serializable = curResults.serializable + 1)
+          else
+            curResults.copy(snapshot = curResults.snapshot + 1)
+          _ <- insertData()
+          finalResults <- run(newResults, i - 1)
+        } yield finalResults
+    }
+  }
+
+  private def setValue(source: String, dest: String): Future[Unit] = {
+    yugabyteClient.execute(
+      s"""
+         |BEGIN TRANSACTION
+         |UPDATE $Keyspace.$TestTableName SET $dest = $source WHERE id = 0;
+         |END TRANSACTION;
+         |""".stripMargin.replaceAll("\n", " ")).map(_ => {})
+  }
+
+  private def checkRow(state: String): Future[(Int, Int)] = {
+    yugabyteClient.execute(s"SELECT * FROM $Keyspace.$TestTableName WHERE id = 0").map { res =>
+      val row = res.all().get(0)
+      println(s"$state: x: ${row.getInt(1)}, y: ${row.getInt(2)}")
+      (row.getInt(1), row.getInt(2))
     }
   }
 
@@ -50,20 +87,19 @@ class YugabyteStingrayApp(yugabyteClient: YugabyteClient) extends StingrayApp {
   }
 
   private def insertData(): Future[Unit] = {
-    Future.sequence((0 to 1).map { id =>
-      val insert = s"""
-        INSERT INTO $Keyspace.$TestTableName
-                      |(id, x, y)
-                      |VALUES
-                      |($id, 0, 0);
-        """.trim.stripMargin('|').replaceAll("\n", " ")
-      yugabyteClient.execute(insert)
-    }).map(_ => {})
-
+    val insert = s"""
+       INSERT INTO $Keyspace.$TestTableName
+                     |(id, x, y)
+                     |VALUES
+                     |(0, 0, 1);
+       """.trim.stripMargin('|').replaceAll("\n", " ")
+    yugabyteClient.execute(insert).map(_ => {})
   }
 }
 
 object YugabyteStingrayApp {
+
+  case class Results(serializable: Int, snapshot: Int)
 
   def apply(yugabyteClient: YugabyteClient): YugabyteStingrayApp = new YugabyteStingrayApp(yugabyteClient)
 }
