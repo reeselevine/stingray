@@ -15,16 +15,23 @@ class YugabyteClient {
   def execute(query: String): Future[ResultSet] = {
     session.executeAsync(query).asScala
   }
+
+  def close(): Unit = {
+    session.close()
+    cluster.close()
+  }
 }
 
 object YugabyteClient {
 
-  implicit class RichListenableFuture[T](lf: ListenableFuture[T]) {
-    def asScala[T]: Future[T] = {
-      val p = Promise[T]()
-      Futures.addCallback(lf, new FutureCallback[T] {
+  def apply(): YugabyteClient = new YugabyteClient()
+
+  implicit class RichListenableFuture(lf: ListenableFuture[ResultSet]) {
+    def asScala: Future[ResultSet] = {
+      val p = Promise[ResultSet]()
+      Futures.addCallback(lf, new FutureCallback[ResultSet] {
         override def onFailure(t: Throwable): Unit = p.failure(t)
-        override def onSuccess(result: T): Unit = p.success(result)
+        override def onSuccess(result: ResultSet): Unit = p.success(result)
       })
       p.future
     }
