@@ -1,7 +1,8 @@
 package ucsc.stingray
 
 
-import ucsc.stingray.StingrayApp.Result
+import ucsc.stingray.StingrayApp.TestTypes
+import ucsc.stingray.StingrayApp.{Result, TestConfig}
 import ucsc.stingray.StingrayDriver.SerializationLevels
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -19,10 +20,36 @@ class YugabyteStingrayApp(yugabyteClient: YugabyteClient) extends StingrayApp {
     } yield {}
   }
 
-  def run(): Future[Result] = {
+  override def run(config: TestConfig): Future[Result] = {
+    config.testType match {
+      case TestTypes.WriteSkew => runWriteSkew()
+      case TestTypes.DirtyWrite => runDirtyWrite()
+    }
+
+  }
+
+  private def runDirtyWrite(): Future[Result] = {
     insertData().flatMap { _ =>
-      val t1 = buildTransaction("x", "y")
-      val t2 = buildTransaction("y", "x")
+      val t1 = buildDirtyWriteTransaction(1)
+      val t2 = buildDirtyWriteTransaction(2)
+      for {
+        _ <- t1
+        _ <- t2
+        (x, y) <- checkRow("after")
+      } yield {
+        if (x == y) {
+          Result(SerializationLevels.Serializable)
+        } else {
+          Result(SerializationLevels.Nada)
+        }
+      }
+    }
+  }
+
+  private def runWriteSkew(): Future[Result] = {
+    insertData().flatMap { _ =>
+      val t1 = buildWriteSkewTransaction("x", "y")
+      val t2 = buildWriteSkewTransaction("y", "x")
       for {
         _ <- t1
         _ <- t2
@@ -37,11 +64,21 @@ class YugabyteStingrayApp(yugabyteClient: YugabyteClient) extends StingrayApp {
     }
   }
 
-  private def buildTransaction(source: String, dest: String): Future[Unit] = {
+  private def buildWriteSkewTransaction(source: String, dest: String): Future[Unit] = {
     yugabyteClient.execute(
       s"""
          |BEGIN TRANSACTION
          |UPDATE $Keyspace.$TestTableName SET $dest = $source WHERE id = 0;
+         |END TRANSACTION;
+         |""".stripMargin.replaceAll("\n", " ")).map(_ => {})
+  }
+
+  private def buildDirtyWriteTransaction(value: Int): Future[Unit] = {
+    yugabyteClient.execute(
+      s"""
+         |BEGIN TRANSACTION
+         |UPDATE $Keyspace.$TestTableName SET x = $value WHERE id = 0;
+         |UPDATE $Keyspace.$TestTableName SET y = $value WHERE id = 0;
          |END TRANSACTION;
          |""".stripMargin.replaceAll("\n", " ")).map(_ => {})
   }

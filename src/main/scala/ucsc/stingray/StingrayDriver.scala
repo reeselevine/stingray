@@ -1,5 +1,6 @@
 package ucsc.stingray
 
+import ucsc.stingray.StingrayApp.{TestConfig, TestTypes}
 import ucsc.stingray.StingrayDriver.SerializationLevels.SerializationLevel
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -24,7 +25,7 @@ class StingrayDriver(app: StingrayApp) {
   private def run(iterationsLeft: Int, results: Map[SerializationLevel, Int]): Future[Map[SerializationLevel, Int]] = {
     iterationsLeft match {
       case 0 => Future(results)
-      case _ => app.run().flatMap { result =>
+      case _ => app.run(TestConfig(TestTypes.DirtyWrite)).flatMap { result =>
         val curValue = results.getOrElse(result.serializationLevel, 0)
         val newResults = results + (result.serializationLevel -> (curValue + 1))
         run(iterationsLeft - 1, newResults)
@@ -37,7 +38,7 @@ object StingrayDriver {
 
   object SerializationLevels extends Enumeration {
     type SerializationLevel = Value
-    val Serializable, SnapshotIsolation = Value
+    val Serializable, SnapshotIsolation, Nada = Value
   }
 
   def apply(app: StingrayApp): StingrayDriver = new StingrayDriver(app)

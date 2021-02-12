@@ -9,11 +9,19 @@ trait StingrayApp {
 
   def setup(): Future[Unit]
 
-  def run(): Future[Result]
+  def run(config: TestConfig): Future[Result]
 
   def teardown(): Future[Unit]
 }
 
 object StingrayApp {
+
+  object TestTypes extends Enumeration {
+    type TestType = Value
+
+    val WriteSkew, DirtyWrite = Value
+  }
+
+  case class TestConfig(testType: TestTypes.Value)
   case class Result(serializationLevel: SerializationLevel)
 }
