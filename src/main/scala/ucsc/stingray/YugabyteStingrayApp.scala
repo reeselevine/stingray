@@ -1,7 +1,8 @@
 package ucsc.stingray
 
 
-import ucsc.stingray.YugabyteStingrayApp.Results
+import ucsc.stingray.StingrayApp.Result
+import ucsc.stingray.StingrayDriver.SerializationLevels
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
@@ -15,37 +16,28 @@ class YugabyteStingrayApp(yugabyteClient: YugabyteClient) extends StingrayApp {
     for {
       _ <- createKeyspace()
       _ <- createTable()
-      _ <- insertData()
     } yield {}
   }
 
-  def run(): Future[Unit] = {
-    run(Results(0, 0), 100).map { results =>
-      println(s"Serializable: ${results.serializable}, Snapshot: ${results.snapshot}")
+  def run(): Future[Result] = {
+    insertData().flatMap { _ =>
+      val t1 = buildTransaction("x", "y")
+      val t2 = buildTransaction("y", "x")
+      for {
+        _ <- t1
+        _ <- t2
+        (x, y) <- checkRow("after")
+      } yield {
+        if (x == y) {
+          Result(SerializationLevels.Serializable)
+        } else {
+          Result(SerializationLevels.SnapshotIsolation)
+        }
+      }
     }
   }
 
-  def run(curResults: Results, iterationsLeft: Int): Future[Results] = {
-    iterationsLeft match {
-      case 0 => Future(curResults)
-      case i =>
-        val t1 = setValue("x", "y")
-        val t2 = setValue("y", "x")
-        for {
-          _ <- t1
-          _ <- t2
-          (x, y) <- checkRow("after")
-          newResults = if (x == y)
-            curResults.copy(serializable = curResults.serializable + 1)
-          else
-            curResults.copy(snapshot = curResults.snapshot + 1)
-          _ <- insertData()
-          finalResults <- run(newResults, i - 1)
-        } yield finalResults
-    }
-  }
-
-  private def setValue(source: String, dest: String): Future[Unit] = {
+  private def buildTransaction(source: String, dest: String): Future[Unit] = {
     yugabyteClient.execute(
       s"""
          |BEGIN TRANSACTION
