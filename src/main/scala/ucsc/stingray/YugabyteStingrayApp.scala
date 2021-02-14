@@ -8,7 +8,7 @@ import ucsc.stingray.StingrayDriver.SerializationLevels
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-class YugabyteStingrayApp(yugabyteClient: YugabyteClient) extends StingrayApp {
+class YugabyteStingrayApp(yugabyteClient: YugabyteClient, val config: TestConfig) extends StingrayApp {
 
   val Keyspace = "stingray"
   val TestTableName = "litmustest"
@@ -20,7 +20,7 @@ class YugabyteStingrayApp(yugabyteClient: YugabyteClient) extends StingrayApp {
     } yield {}
   }
 
-  override def run(config: TestConfig): Future[Result] = {
+  override def run(): Future[Result] = {
     config.testType match {
       case TestTypes.WriteSkew => runWriteSkew()
       case TestTypes.DirtyWrite => runDirtyWrite()
@@ -35,7 +35,7 @@ class YugabyteStingrayApp(yugabyteClient: YugabyteClient) extends StingrayApp {
       for {
         _ <- t1
         _ <- t2
-        (x, y) <- checkRow("after")
+        (x, y) <- checkRow()
       } yield {
         if (x == y) {
           Result(SerializationLevels.Serializable)
@@ -53,7 +53,7 @@ class YugabyteStingrayApp(yugabyteClient: YugabyteClient) extends StingrayApp {
       for {
         _ <- t1
         _ <- t2
-        (x, y) <- checkRow("after")
+        (x, y) <- checkRow()
       } yield {
         if (x == y) {
           Result(SerializationLevels.Serializable)
@@ -83,11 +83,13 @@ class YugabyteStingrayApp(yugabyteClient: YugabyteClient) extends StingrayApp {
          |""".stripMargin.replaceAll("\n", " ")).map(_ => {})
   }
 
-  private def checkRow(state: String): Future[(Int, Int)] = {
-    yugabyteClient.execute(s"SELECT * FROM $Keyspace.$TestTableName WHERE id = 0").map { res =>
-      val row = res.all().get(0)
-      println(s"$state: x: ${row.getInt(1)}, y: ${row.getInt(2)}")
-      (row.getInt(1), row.getInt(2))
+  private def checkRow(): Future[(Int, Int)] = {
+    yugabyteClient.execute(s"SELECT * FROM $Keyspace.$TestTableName WHERE id = 0", Some(config.dataSchema)).map { res =>
+      val row = res(0)
+      val x = row.data("x").intValue()
+      val y = row.data("y").intValue()
+      println(s"results: x: $x y: $y")
+      (x, y)
     }
   }
 
@@ -130,5 +132,5 @@ object YugabyteStingrayApp {
 
   case class Results(serializable: Int, snapshot: Int)
 
-  def apply(yugabyteClient: YugabyteClient): YugabyteStingrayApp = new YugabyteStingrayApp(yugabyteClient)
+  def apply(yugabyteClient: YugabyteClient, config: TestConfig): YugabyteStingrayApp = new YugabyteStingrayApp(yugabyteClient, config)
 }
