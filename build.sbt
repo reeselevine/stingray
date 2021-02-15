@@ -6,4 +6,5 @@ scalaVersion := "2.13.4"
 
 //idePackagePrefix := Some("org.ucsc.stingray")
 libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-5"
+libraryDependencies += "org.postgresql" % "postgresql" % "42.2.14"
 

@@ -3,21 +3,21 @@ package ucsc.stingray
 
 import ucsc.stingray.StingrayApp.TestTypes
 import ucsc.stingray.StingrayApp.{Result, TestConfig}
-import ucsc.stingray.StingrayDriver.SerializationLevels
+import ucsc.stingray.sqldsl._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-class YugabyteStingrayApp(yugabyteClient: YugabyteClient, val config: TestConfig) extends StingrayApp {
+class YugabyteStingrayApp(yugabyteClient: YugabyteClient, val config: TestConfig) extends StingrayApp
+with SqlDsl {
 
   val Keyspace = "stingray"
   val TestTableName = "litmustest"
 
   def setup(): Future[Unit] = {
-    for {
-      _ <- createKeyspace()
-      _ <- createTable()
-    } yield {}
+    yugabyteClient.execute(
+      createTable(TestTableName, ("id", DataTypes.Integer))
+        .withSchema(config.dataSchema.schema))
   }
 
   override def run(): Future[Result] = {
@@ -66,25 +66,19 @@ class YugabyteStingrayApp(yugabyteClient: YugabyteClient, val config: TestConfig
 
   private def buildWriteSkewTransaction(source: String, dest: String): Future[Unit] = {
     yugabyteClient.execute(
-      s"""
-         |BEGIN TRANSACTION
-         |UPDATE $Keyspace.$TestTableName SET $dest = $source WHERE id = 0;
-         |END TRANSACTION;
-         |""".stripMargin.replaceAll("\n", " ")).map(_ => {})
+      transaction()
+        .add(update(TestTableName).withValues(Seq((dest, source))).withCondition("id = 0")))
   }
 
   private def buildDirtyWriteTransaction(value: Int): Future[Unit] = {
     yugabyteClient.execute(
-      s"""
-         |BEGIN TRANSACTION
-         |UPDATE $Keyspace.$TestTableName SET x = $value WHERE id = 0;
-         |UPDATE $Keyspace.$TestTableName SET y = $value WHERE id = 0;
-         |END TRANSACTION;
-         |""".stripMargin.replaceAll("\n", " ")).map(_ => {})
+      transaction()
+        .add(update(TestTableName).withValues(Seq(("x", value))).withCondition("id = 0"))
+        .add(update(TestTableName).withValues(Seq(("y" , value))).withCondition("id = 0")))
   }
 
   private def checkRow(): Future[(Int, Int)] = {
-    yugabyteClient.execute(s"SELECT * FROM $Keyspace.$TestTableName WHERE id = 0", Some(config.dataSchema)).map { res =>
+    yugabyteClient.execute(select(TestTableName).withCondition("id = 0"), config.dataSchema).map { res =>
       val row = res(0)
       val x = row.data("x").intValue()
       val y = row.data("y").intValue()
@@ -95,36 +89,14 @@ class YugabyteStingrayApp(yugabyteClient: YugabyteClient, val config: TestConfig
 
   def teardown(): Future[Unit] = {
     for {
-      _ <- yugabyteClient.execute(s"DROP TABLE $Keyspace.$TestTableName")
-      _ <- yugabyteClient.execute(s" DROP KEYSPACE $Keyspace")
+      _ <- yugabyteClient.execute(dropTable(TestTableName))
     } yield {
       yugabyteClient.close()
     }
   }
 
-  private def createKeyspace(): Future[Unit] = {
-    yugabyteClient.execute(s"CREATE KEYSPACE IF NOT EXISTS $Keyspace;").map(_ => {})
-  }
-
-  private def createTable(): Future[Unit] = {
-    val createTable = s"""
-        CREATE TABLE IF NOT EXISTS $Keyspace.$TestTableName (
-          id int PRIMARY KEY,
-          x int,
-          y int
-        ) with transactions = { 'enabled' : true };
-      """
-    yugabyteClient.execute(createTable).map(_ => {})
-  }
-
   private def insertData(): Future[Unit] = {
-    val insert = s"""
-       INSERT INTO $Keyspace.$TestTableName
-                     |(id, x, y)
-                     |VALUES
-                     |(0, 0, 1);
-       """.trim.stripMargin('|').replaceAll("\n", " ")
-    yugabyteClient.execute(insert).map(_ => {})
+    yugabyteClient.execute(insertInto(TestTableName).withValues(Seq(("id", 0), ("x", 0), ("y", 1))))
   }
 }
 

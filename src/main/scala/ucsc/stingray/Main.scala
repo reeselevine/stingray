@@ -1,6 +1,7 @@
 package ucsc.stingray
 
-import ucsc.stingray.StingrayApp.{DataSchema, DataTypes, TestConfig, TestTypes}
+import ucsc.stingray.StingrayApp.{TestConfig, TestTypes}
+import ucsc.stingray.sqldsl.{DataSchema, DataTypes}
 
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration

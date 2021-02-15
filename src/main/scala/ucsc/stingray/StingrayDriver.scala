@@ -1,7 +1,6 @@
 package ucsc.stingray
 
-import ucsc.stingray.StingrayApp.{DataSchema, DataTypes, TestConfig, TestTypes}
-import ucsc.stingray.StingrayDriver.SerializationLevels.SerializationLevel
+import ucsc.stingray.sqldsl.SerializationLevels.SerializationLevel
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
@@ -35,11 +34,6 @@ class StingrayDriver(app: StingrayApp) {
 }
 
 object StingrayDriver {
-
-  object SerializationLevels extends Enumeration {
-    type SerializationLevel = Value
-    val Serializable, SnapshotIsolation, Nada = Value
-  }
 
   def apply(app: StingrayApp): StingrayDriver = new StingrayDriver(app)
 }

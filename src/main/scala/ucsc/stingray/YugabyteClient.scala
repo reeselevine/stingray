@@ -1,17 +1,22 @@
 package ucsc.stingray
 
-import ucsc.stingray.StingrayApp.DataSchema
 import ucsc.stingray.YugabyteClient.DataRow
+import ucsc.stingray.sqldsl._
 
 import scala.concurrent.Future
 
 /** A client for executing queries on YugabyteDb */
 trait YugabyteClient {
 
-  /** Executes a query, and if a schema is defined, returns a
-   * list of rows with data values matching the provided schema.
-   * If the schema is not defined, returns an empty list. */
-  def execute(query: String, schemaOpt: Option[DataSchema] = None): Future[Seq[DataRow]]
+  def execute(createTableRequest: CreateTableRequest): Future[Unit]
+
+  def execute(dropTableRequest: DropTableRequest): Future[Unit]
+
+  def execute(upsertOperation: Upsert): Future[Unit]
+
+  def execute(select: Select, schema: DataSchema): Future[Seq[DataRow]]
+
+  def execute(transaction: Transaction): Future[Unit]
 
   /** Close the client */
   def close(): Unit
