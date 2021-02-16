@@ -1,12 +1,12 @@
 package ucsc.stingray
 
-import ucsc.stingray.YugabyteClient.DataRow
-import ucsc.stingray.sqldsl._
+import ucsc.stingray.SqlLikeClient.DataRow
+import ucsc.stingray.sqllikedisl._
 
 import scala.concurrent.Future
 
-/** A client for executing queries on YugabyteDb */
-trait YugabyteClient {
+/** A client for executing Sql Like queries.  */
+trait SqlLikeClient {
 
   def execute(createTableRequest: CreateTableRequest): Future[Unit]
 
@@ -22,7 +22,7 @@ trait YugabyteClient {
   def close(): Unit
 }
 
-object YugabyteClient {
+object SqlLikeClient {
 
   /** Representation of a data type returned by a query. */
   sealed trait DataValue {

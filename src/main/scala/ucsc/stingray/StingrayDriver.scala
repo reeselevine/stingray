@@ -1,6 +1,6 @@
 package ucsc.stingray
 
-import ucsc.stingray.sqldsl.SerializationLevels.SerializationLevel
+import ucsc.stingray.sqllikedisl.SerializationLevels.SerializationLevel
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future

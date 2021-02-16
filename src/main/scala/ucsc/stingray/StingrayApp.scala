@@ -1,8 +1,8 @@
 package ucsc.stingray
 
 import ucsc.stingray.StingrayApp._
-import ucsc.stingray.sqldsl.DataSchema
-import ucsc.stingray.sqldsl.SerializationLevels.SerializationLevel
+import ucsc.stingray.sqllikedisl.DataSchema
+import ucsc.stingray.sqllikedisl.SerializationLevels.SerializationLevel
 
 import scala.concurrent.Future
 

@@ -1,7 +1,7 @@
-package ucsc.stingray.sqldsl
+package ucsc.stingray.sqllikedisl
 
 /** Extending this trait gives access to the SQL DSL */
-trait SqlDsl {
+trait SqlLikeDsl {
 
   def createTable(tableName: String, primaryKey: (String, DataTypes.Value)): CreateTableRequest =
     CreateTableRequest(tableName, primaryKey)
@@ -18,7 +18,7 @@ trait SqlDsl {
 }
 
 /** Importing this object gives access to the SQL DSL */
-object SqlDsl extends SqlDsl
+object SqlLikeDsl extends SqlLikeDsl
 
 /** Represents an operation to create a table. */
 case class CreateTableRequest(tableName: String, primaryKey: (String, DataTypes.Value), schema: Map[String, DataTypes.Value] = Map()) {

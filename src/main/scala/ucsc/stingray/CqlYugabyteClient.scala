@@ -2,14 +2,14 @@ package ucsc.stingray
 
 import com.datastax.driver.core.{Cluster, ResultSet}
 import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture}
-import ucsc.stingray.YugabyteClient.{DataRow, DataValue, IntDataValue, StringDataValue}
-import ucsc.stingray.sqldsl._
+import ucsc.stingray.SqlLikeClient.{DataRow, DataValue, IntDataValue, StringDataValue}
+import ucsc.stingray.sqllikedisl._
 
 import scala.concurrent.{Future, Promise}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.jdk.CollectionConverters.CollectionHasAsScala
 
-class CqlYugabyteClient extends YugabyteClient {
+class CqlYugabyteClient extends SqlLikeClient {
 
   import CqlYugabyteClient._
   val Keyspace = "stingray"

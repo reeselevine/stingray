@@ -3,19 +3,18 @@ package ucsc.stingray
 
 import ucsc.stingray.StingrayApp.TestTypes
 import ucsc.stingray.StingrayApp.{Result, TestConfig}
-import ucsc.stingray.sqldsl._
+import ucsc.stingray.sqllikedisl._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-class YugabyteStingrayApp(yugabyteClient: YugabyteClient, val config: TestConfig) extends StingrayApp
-with SqlDsl {
+class SqlLikeStingrayApp(sqlLikeClient: SqlLikeClient, val config: TestConfig) extends StingrayApp
+with SqlLikeDsl {
 
-  val Keyspace = "stingray"
   val TestTableName = "litmustest"
 
   def setup(): Future[Unit] = {
-    yugabyteClient.execute(
+    sqlLikeClient.execute(
       createTable(TestTableName, ("id", DataTypes.Integer))
         .withSchema(config.dataSchema.schema))
   }
@@ -65,20 +64,20 @@ with SqlDsl {
   }
 
   private def buildWriteSkewTransaction(source: String, dest: String): Future[Unit] = {
-    yugabyteClient.execute(
+    sqlLikeClient.execute(
       transaction()
         .add(update(TestTableName).withValues(Seq((dest, source))).withCondition("id = 0")))
   }
 
   private def buildDirtyWriteTransaction(value: Int): Future[Unit] = {
-    yugabyteClient.execute(
+    sqlLikeClient.execute(
       transaction()
         .add(update(TestTableName).withValues(Seq(("x", value))).withCondition("id = 0"))
         .add(update(TestTableName).withValues(Seq(("y" , value))).withCondition("id = 0")))
   }
 
   private def checkRow(): Future[(Int, Int)] = {
-    yugabyteClient.execute(select(TestTableName).withCondition("id = 0"), config.dataSchema).map { res =>
+    sqlLikeClient.execute(select(TestTableName).withCondition("id = 0"), config.dataSchema).map { res =>
       val row = res(0)
       val x = row.data("x").intValue()
       val y = row.data("y").intValue()
@@ -89,20 +88,20 @@ with SqlDsl {
 
   def teardown(): Future[Unit] = {
     for {
-      _ <- yugabyteClient.execute(dropTable(TestTableName))
+      _ <- sqlLikeClient.execute(dropTable(TestTableName))
     } yield {
-      yugabyteClient.close()
+      sqlLikeClient.close()
     }
   }
 
   private def insertData(): Future[Unit] = {
-    yugabyteClient.execute(insertInto(TestTableName).withValues(Seq(("id", 0), ("x", 0), ("y", 1))))
+    sqlLikeClient.execute(insertInto(TestTableName).withValues(Seq(("id", 0), ("x", 0), ("y", 1))))
   }
 }
 
-object YugabyteStingrayApp {
+object SqlLikeStingrayApp {
 
   case class Results(serializable: Int, snapshot: Int)
 
-  def apply(yugabyteClient: YugabyteClient, config: TestConfig): YugabyteStingrayApp = new YugabyteStingrayApp(yugabyteClient, config)
+  def apply(sqlLikeClient: SqlLikeClient, config: TestConfig): SqlLikeStingrayApp = new SqlLikeStingrayApp(sqlLikeClient, config)
 }
