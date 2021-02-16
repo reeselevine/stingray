@@ -2,44 +2,39 @@ package ucsc.stingray
 
 import org.postgresql.util.PSQLException
 
-import java.sql.Statement
+import java.sql.{Connection, Statement}
 import ucsc.stingray.SqlLikeClient.{DataRow, DataValue, IntDataValue, StringDataValue}
 import ucsc.stingray.sqllikedisl.{CreateTableRequest, DataSchema, DataTypes, DropTableRequest, IsolationLevels, Select, SqlLikeUtils, Transaction, Upsert}
 
 import scala.concurrent.blocking
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.util.{Failure, Success}
 
 class JdbcClient(connectionPool: JdbcConnectionPool) extends SqlLikeClient with SqlLikeUtils {
 
   override def execute(createTableRequest: CreateTableRequest): Future[Unit] = {
     val createTableHeader = s"CREATE TABLE IF NOT EXISTS ${createTableRequest.tableName} ("
     val createTableFooter = ");"
-    executeUpdate(buildTableSchema(createTableHeader, createTableFooter, createTableRequest))
+    executeUpdate(buildTableSchema(createTableHeader, createTableFooter, createTableRequest), IsolationLevels.Serializable)
   }
 
   override def execute(dropTableRequest: DropTableRequest): Future[Unit] = {
-    executeUpdate(s"DROP TABLE ${dropTableRequest.tableName};")
+    executeUpdate(s"DROP TABLE ${dropTableRequest.tableName};", IsolationLevels.Serializable)
   }
 
   override def execute(upsertOperation: Upsert): Future[Unit] = {
-    executeUpdate(buildUpsert(upsertOperation.tableName, upsertOperation))
+    executeUpdate(buildUpsert(upsertOperation.tableName, upsertOperation), IsolationLevels.Serializable)
   }
 
   override def execute(transaction: Transaction): Future[Unit] = {
-    val isolationLevel = transaction.isolationLevel match {
-      case IsolationLevels.Serializable => "SERIALIZABLE"
-      case IsolationLevels.SnapshotIsolation => "REPEATABLE READ"
-    }
-    val operations = transaction.operations.map { operation =>
-      operation match {
-        case upsert: Upsert => buildUpsert(operation.tableName, upsert)
-      }
+    val operations = transaction.operations.map {
+        case upsert: Upsert => buildUpsert(upsert.tableName, upsert)
     }.mkString(" ")
-    executeUpdate(s"BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL $isolationLevel; $operations END;")
+    executeUpdate(operations, transaction.isolationLevel)
   }
 
-  override def execute(select: Select, schema: DataSchema): Future[Seq[DataRow]] = withConnection { stmt =>
+  override def execute(select: Select, schema: DataSchema): Future[Seq[DataRow]] = withConnection() { stmt =>
     Future {
       blocking {
         stmt.executeQuery(buildSelect(select.tableName, select))
@@ -62,35 +57,41 @@ class JdbcClient(connectionPool: JdbcConnectionPool) extends SqlLikeClient with 
     }
   }
 
-  private def executeUpdate(query: String): Future[Unit] = withConnection { stmt =>
-    withRetries() {
+  private def executeUpdate(query: String, isolationLevel: IsolationLevels.Value): Future[Unit] =
+    withConnection(isolationLevel) { stmt =>
       Future {
         blocking {
           stmt.executeUpdate(query)
         }
       }
     }
-  }
 
   override def close(): Unit = {}
 
-  def withConnection[T](block: Statement => Future[T]) = {
+  def withConnection[T](isolationLevel: IsolationLevels.Value = IsolationLevels.Serializable)
+                       (block: Statement => Future[T]) = {
     val connection = connectionPool.getConnection()
+    connection.setAutoCommit(false)
+    connection.setTransactionIsolation(IsolationLevels.jdbcValue(isolationLevel))
     val stmt = connection.createStatement()
-    block(stmt) andThen { _ =>
+    withRetries(connection, retries = 3)(block(stmt)) andThen { result =>
+      result match {
+        case Success(_) => connection.commit()
+        case Failure(_) => connection.rollback()
+      }
       stmt.close()
       connection.close()
     }
   }
 
-  def withRetries[T](retries: Int = 10)(block: => Future[T]): Future[T] = {
-    if (retries > 0)
+  def withRetries[T](connection: Connection, retries: Int)(block: => Future[T]): Future[T] = {
+    if (retries > 0) {
       block recoverWith {
-        case _: PSQLException => println("retrying")
-          withRetries(retries - 1)(block)
+        case _: PSQLException =>
+          connection.rollback()
+          withRetries(connection, retries - 1)(block)
       }
-    else
-      block
+    } else block
   }
 }
 

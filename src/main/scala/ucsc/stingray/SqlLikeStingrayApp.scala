@@ -73,7 +73,7 @@ with SqlLikeDsl {
   private def buildDirtyWriteTransaction(value: Int): Future[Unit] = {
     sqlLikeClient.execute(
       transaction()
-        //.setIsolationLevel(IsolationLevels.Serializable)
+        .setIsolationLevel(IsolationLevels.Serializable)
         .add(update(TestTableName).withValues(Seq(("x", value))).withCondition("id = 0"))
         .add(update(TestTableName).withValues(Seq(("y" , value))).withCondition("id = 0")))
   }

@@ -35,6 +35,12 @@ case class DropTableRequest(tableName: String)
 object IsolationLevels extends Enumeration {
   type IsolationLevel = Value
   val Serializable, SnapshotIsolation, Nada = Value
+
+  def jdbcValue(value: Value): Int = value match {
+    case Serializable => 8
+    case SnapshotIsolation => 4
+    case Nada => 0
+  }
 }
 
 
