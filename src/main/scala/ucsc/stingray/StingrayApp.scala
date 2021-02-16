@@ -2,7 +2,7 @@ package ucsc.stingray
 
 import ucsc.stingray.StingrayApp._
 import ucsc.stingray.sqllikedisl.DataSchema
-import ucsc.stingray.sqllikedisl.SerializationLevels.SerializationLevel
+import ucsc.stingray.sqllikedisl.IsolationLevels.IsolationLevel
 
 import scala.concurrent.Future
 
@@ -26,5 +26,5 @@ object StingrayApp {
   }
 
   case class TestConfig(testType: TestTypes.Value, dataSchema: DataSchema)
-  case class Result(serializationLevel: SerializationLevel)
+  case class Result(serializationLevel: IsolationLevel)
 }

@@ -9,7 +9,7 @@ import scala.concurrent.{Future, Promise}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.jdk.CollectionConverters.CollectionHasAsScala
 
-class CqlYugabyteClient extends SqlLikeClient {
+class CqlYugabyteClient extends SqlLikeClient with SqlLikeUtils {
 
   import CqlYugabyteClient._
   val Keyspace = "stingray"
@@ -21,10 +21,7 @@ class CqlYugabyteClient extends SqlLikeClient {
   override def execute(createTableRequest: CreateTableRequest): Future[Unit] = {
     val createTableHeader = s"CREATE TABLE IF NOT EXISTS $Keyspace.${createTableRequest.tableName} ("
     val createTableFooter = ") with transactions = { 'enabled' : true };"
-    val primaryKeyStr = s"${buildFieldDefinition(createTableRequest.primaryKey)} PRIMARY KEY"
-    val otherFields = createTableRequest.schema.map(buildFieldDefinition).toSeq
-    val joinedFields = (Seq(primaryKeyStr) ++ otherFields).mkString(",")
-    session.executeAsync(createTableHeader + joinedFields + createTableFooter).asScala.map(_ => {})
+    session.executeAsync(buildTableSchema(createTableHeader, createTableFooter, createTableRequest)).asScala.map(_ => {})
   }
 
   override def execute(dropTableRequest: DropTableRequest): Future[Unit] = {
@@ -32,30 +29,22 @@ class CqlYugabyteClient extends SqlLikeClient {
   }
 
   override def execute(upsertOperation: Upsert): Future[Unit] = {
-    val query = upsertOperation match {
-      case update: Update => buildUpdate(update)
-      case upsert => buildUpsert(upsert)
-    }
-    session.executeAsync(query).asScala.map(_ => {})
+    val tableName = s"$Keyspace.${upsertOperation.tableName}"
+    session.executeAsync(buildUpsert(tableName, upsertOperation)).asScala.map(_ => {})
   }
 
   override def execute(transaction: Transaction): Future[Unit] = {
     val operations = transaction.operations.map { operation =>
+      val tableName = s"$Keyspace.${operation.tableName}"
       operation match {
-        case update: Update => buildUpdate(update)
-        case upsert: Upsert => buildUpsert(upsert)
+        case upsert: Upsert => buildUpsert(tableName, upsert)
       }
     }.mkString(" ")
     session.executeAsync(s"BEGIN TRANSACTION $operations END TRANSACTION;").asScala.map(_ => {})
   }
 
   override def execute(select: Select, schema: DataSchema): Future[Seq[DataRow]] = {
-    val columns = select.columns match {
-      case Right(values) => values.mkString(",")
-      case Left(_) => "*"
-    }
-    val query = s"SELECT $columns FROM $Keyspace.${select.tableName}".withCondition(select.condition)
-    session.executeAsync(query).asScala.map { resultSet =>
+    session.executeAsync(buildSelect(s"$Keyspace.${select.tableName}", select)).asScala.map { resultSet =>
       var i = 0
       resultSet.all().asScala.map { row =>
         val data = schema.schema.foldLeft(Map[String, DataValue]()) {
@@ -71,25 +60,6 @@ class CqlYugabyteClient extends SqlLikeClient {
     }
   }
 
-  private def buildFieldDefinition(field: (String, DataTypes.Value)): String = field match {
-    case (key, dataType) => dataType match {
-      case DataTypes.Integer => s"$key int"
-    }
-  }
-
-  private def buildUpdate(update: Update): String = {
-    val updates = update.values.map {
-      case (field, value) => s"$field = $value"
-    }.mkString(",")
-    s"UPDATE $Keyspace.${update.tableName} SET $updates".withCondition(update.condition)
-  }
-
-  private def buildUpsert(upsert: Upsert): String = {
-    val fields = s"(${upsert.values.map(_._1).mkString(",")})"
-    val values = s"(${upsert.values.map(_._2).mkString(",")})"
-    s"INSERT INTO $Keyspace.${upsert.tableName} $fields VALUES $values".withCondition(upsert.condition)
-  }
-
   def close(): Unit = {
     session.execute(s"DROP KEYSPACE $Keyspace")
     session.close()
@@ -100,15 +70,6 @@ class CqlYugabyteClient extends SqlLikeClient {
 object CqlYugabyteClient {
 
   def apply(): CqlYugabyteClient = new CqlYugabyteClient()
-
-  implicit class RichString(str: String) {
-    def withCondition(condition: Option[String]) = {
-      condition match {
-        case Some(cond) => str + " WHERE " + cond + ";"
-        case None => str + ";"
-      }
-    }
-  }
 
   implicit class RichListenableFuture(lf: ListenableFuture[ResultSet]) {
     def asScala: Future[ResultSet] = {

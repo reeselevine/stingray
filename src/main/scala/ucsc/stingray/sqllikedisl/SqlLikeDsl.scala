@@ -32,18 +32,18 @@ case class CreateTableRequest(tableName: String, primaryKey: (String, DataTypes.
 case class DropTableRequest(tableName: String)
 
 
-object SerializationLevels extends Enumeration {
-  type SerializationLevel = Value
+object IsolationLevels extends Enumeration {
+  type IsolationLevel = Value
   val Serializable, SnapshotIsolation, Nada = Value
 }
 
 
 /** Represents a transaction, which is a list of data operations. */
-case class Transaction(isolationLevel: SerializationLevels.Value = SerializationLevels.SnapshotIsolation, operations: Seq[DataOperation] = Nil) {
+case class Transaction(isolationLevel: IsolationLevels.Value = IsolationLevels.SnapshotIsolation, operations: Seq[DataOperation] = Nil) {
 
   def add(operation: DataOperation): Transaction = copy(operations = operations :+ operation)
 
-  def setIsolationLevel(isolationLevel: SerializationLevels.Value): Transaction = copy(isolationLevel = isolationLevel)
+  def setIsolationLevel(isolationLevel: IsolationLevels.Value): Transaction = copy(isolationLevel = isolationLevel)
 }
 
 /** Represents an operation on data, such as an insert, update, or select. */

@@ -1,6 +1,6 @@
 package ucsc.stingray
 
-import ucsc.stingray.sqllikedisl.SerializationLevels.SerializationLevel
+import ucsc.stingray.sqllikedisl.IsolationLevels.IsolationLevel
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
@@ -21,7 +21,7 @@ class StingrayDriver(app: StingrayApp) {
     }
   }
 
-  private def run(iterationsLeft: Int, results: Map[SerializationLevel, Int]): Future[Map[SerializationLevel, Int]] = {
+  private def run(iterationsLeft: Int, results: Map[IsolationLevel, Int]): Future[Map[IsolationLevel, Int]] = {
     iterationsLeft match {
       case 0 => Future(results)
       case _ => app.run().flatMap { result =>

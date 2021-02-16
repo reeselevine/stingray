@@ -14,9 +14,10 @@ with SqlLikeDsl {
   val TestTableName = "litmustest"
 
   def setup(): Future[Unit] = {
-    sqlLikeClient.execute(
-      createTable(TestTableName, ("id", DataTypes.Integer))
-        .withSchema(config.dataSchema.schema))
+    for {
+      _ <- sqlLikeClient.execute(createTable(TestTableName, ("id", DataTypes.Integer)).withSchema(config.dataSchema.schema))
+      _ <- sqlLikeClient.execute(insertInto(TestTableName).withValues(Seq(("id", 0), ("x", 0), ("y", 1))))
+    } yield {}
   }
 
   override def run(): Future[Result] = {
@@ -28,7 +29,7 @@ with SqlLikeDsl {
   }
 
   private def runDirtyWrite(): Future[Result] = {
-    insertData().flatMap { _ =>
+    updateData().flatMap { _ =>
       val t1 = buildDirtyWriteTransaction(1)
       val t2 = buildDirtyWriteTransaction(2)
       for {
@@ -37,16 +38,16 @@ with SqlLikeDsl {
         (x, y) <- checkRow()
       } yield {
         if (x == y) {
-          Result(SerializationLevels.Serializable)
+          Result(IsolationLevels.Serializable)
         } else {
-          Result(SerializationLevels.Nada)
+          Result(IsolationLevels.Nada)
         }
       }
     }
   }
 
   private def runWriteSkew(): Future[Result] = {
-    insertData().flatMap { _ =>
+    updateData().flatMap { _ =>
       val t1 = buildWriteSkewTransaction("x", "y")
       val t2 = buildWriteSkewTransaction("y", "x")
       for {
@@ -55,9 +56,9 @@ with SqlLikeDsl {
         (x, y) <- checkRow()
       } yield {
         if (x == y) {
-          Result(SerializationLevels.Serializable)
+          Result(IsolationLevels.Serializable)
         } else {
-          Result(SerializationLevels.SnapshotIsolation)
+          Result(IsolationLevels.SnapshotIsolation)
         }
       }
     }
@@ -72,6 +73,7 @@ with SqlLikeDsl {
   private def buildDirtyWriteTransaction(value: Int): Future[Unit] = {
     sqlLikeClient.execute(
       transaction()
+        //.setIsolationLevel(IsolationLevels.Serializable)
         .add(update(TestTableName).withValues(Seq(("x", value))).withCondition("id = 0"))
         .add(update(TestTableName).withValues(Seq(("y" , value))).withCondition("id = 0")))
   }
@@ -94,8 +96,8 @@ with SqlLikeDsl {
     }
   }
 
-  private def insertData(): Future[Unit] = {
-    sqlLikeClient.execute(insertInto(TestTableName).withValues(Seq(("id", 0), ("x", 0), ("y", 1))))
+  private def updateData(): Future[Unit] = {
+    sqlLikeClient.execute(update(TestTableName).withValues(Seq(("x", 0), ("y", 1))).withCondition("id = 0"))
   }
 }
 
