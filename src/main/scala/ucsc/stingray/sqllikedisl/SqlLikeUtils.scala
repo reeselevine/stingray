@@ -1,13 +1,15 @@
 package ucsc.stingray.sqllikedisl
 
+import ucsc.stingray.StingrayApp.DataTypes
+
 trait SqlLikeUtils {
 
   def buildTableSchema(
                         header: String,
                         footer: String,
                         createTableRequest: CreateTableRequest): String = {
-    val primaryKeyStr = s"${buildFieldDefinition(createTableRequest.primaryKey)} PRIMARY KEY"
-    val otherFields = createTableRequest.schema.map(buildFieldDefinition).toSeq
+    val primaryKeyStr = s"${createTableRequest.schema.primaryKey} int PRIMARY KEY"
+    val otherFields = createTableRequest.schema.columns.map(buildFieldDefinition).toSeq
     val joinedFields = (Seq(primaryKeyStr) ++ otherFields).mkString(",")
     header + joinedFields + footer
   }
@@ -38,10 +40,20 @@ trait SqlLikeUtils {
   }
 
   def buildUpdate(fullName: String, update: Update): String = {
-    val updates = update.values.map {
-      case (field, value) => s"$field = $value"
-    }.mkString(",")
-    s"UPDATE $fullName SET $updates".withCondition(update.condition)
+    update.selectUpdateOpt match {
+      case Some(select) =>
+        val updateFields = update.values.map(_._1).mkString(",")
+        val selectStr = buildSelect(select.tableName, select).replace(";", "")
+        s"""
+           |UPDATE $fullName SET
+           |($updateFields) = ($selectStr)
+           |""".stripMargin.withCondition(update.condition)
+      case None =>
+        val updates = update.values.map {
+          case (field, value) => s"$field = $value"
+        }.mkString(",")
+        s"UPDATE $fullName SET $updates".withCondition(update.condition)
+    }
   }
 
   implicit class RichString(str: String) {
@@ -55,6 +67,4 @@ trait SqlLikeUtils {
 
 }
 
-object SqlLikeUtils extends SqlLikeUtils {
-
-}
+object SqlLikeUtils extends SqlLikeUtils

@@ -1,10 +1,12 @@
 package ucsc.stingray.sqllikedisl
 
+import ucsc.stingray.StingrayApp.DataSchema
+import ucsc.stingray.StingrayDriver.IsolationLevels
+
 /** Extending this trait gives access to the SQL DSL */
 trait SqlLikeDsl {
 
-  def createTable(tableName: String, primaryKey: (String, DataTypes.Value)): CreateTableRequest =
-    CreateTableRequest(tableName, primaryKey)
+  def createTable(tableName: String, schema: DataSchema): CreateTableRequest = CreateTableRequest(tableName, schema)
 
   def dropTable(tableName: String): DropTableRequest = DropTableRequest(tableName)
 
@@ -21,28 +23,10 @@ trait SqlLikeDsl {
 object SqlLikeDsl extends SqlLikeDsl
 
 /** Represents an operation to create a table. */
-case class CreateTableRequest(tableName: String, primaryKey: (String, DataTypes.Value), schema: Map[String, DataTypes.Value] = Map()) {
-
-  def withSchema(newSchema: Map[String, DataTypes.Value]) = copy(schema = newSchema)
-
-  def withField(field: (String, DataTypes.Value)) = copy(schema = schema + field)
-}
+case class CreateTableRequest(tableName: String, schema: DataSchema)
 
 /** Represents an operation to drop a table. */
 case class DropTableRequest(tableName: String)
-
-
-object IsolationLevels extends Enumeration {
-  type IsolationLevel = Value
-  val Serializable, SnapshotIsolation, Nada = Value
-
-  def jdbcValue(value: Value): Int = value match {
-    case Serializable => 8
-    case SnapshotIsolation => 4
-    case Nada => 0
-  }
-}
-
 
 /** Represents a transaction, which is a list of data operations. */
 case class Transaction(isolationLevel: IsolationLevels.Value = IsolationLevels.SnapshotIsolation, operations: Seq[DataOperation] = Nil) {
@@ -72,10 +56,14 @@ case class Insert(tableName: String, condition: Option[String] = None, values: S
 }
 
 /** Represents an update operation. */
-case class Update(tableName: String, condition: Option[String] = None, values: Seq[(String, Any)] = Nil)
-  extends Upsert {
+case class Update(
+                   tableName: String,
+                   condition: Option[String] = None,
+                   values: Seq[(String, Any)] = Nil,
+                   selectUpdateOpt: Option[Select] = None) extends Upsert {
   def withCondition(cond: String) = copy(condition = Some(cond))
   def withValues(values: Seq[(String, Any)]) = copy(values = values)
+  def withSelectUpdate(select: Select) = copy(selectUpdateOpt = Some(select))
 }
 
 /** Represents a select operation. By default all columns are selected. */
@@ -89,12 +77,3 @@ case class Select(tableName: String, condition: Option[String] = None, columns: 
 
 /** Represents '*' in SQL syntax, to return all columns */
 case object All
-
-/** Types of data that can be in a row. */
-object DataTypes extends Enumeration {
-  type DataType = Value
-
-  val Integer, String = Value
-}
-/** Represents the expected schema of the data that should be returned by a query. */
-case class DataSchema(schema: Map[String, DataTypes.Value])

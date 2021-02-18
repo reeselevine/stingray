@@ -2,9 +2,11 @@ package ucsc.stingray
 
 import org.postgresql.util.PSQLException
 
-import java.sql.{Connection, Statement}
+import java.sql.{Connection, ResultSet, Statement}
 import ucsc.stingray.SqlLikeClient.{DataRow, DataValue, IntDataValue, StringDataValue}
-import ucsc.stingray.sqllikedisl.{CreateTableRequest, DataSchema, DataTypes, DropTableRequest, IsolationLevels, Select, SqlLikeUtils, Transaction, Upsert}
+import ucsc.stingray.StingrayApp.{DataSchema, DataTypes}
+import ucsc.stingray.StingrayDriver.IsolationLevels
+import ucsc.stingray.sqllikedisl.{CreateTableRequest, DropTableRequest, Select, SqlLikeUtils, Transaction, Upsert}
 
 import scala.concurrent.blocking
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -43,10 +45,12 @@ class JdbcClient(connectionPool: JdbcConnectionPool) extends SqlLikeClient with 
       var i = 0
       var dataRows = Seq[DataRow]()
       while (resultSet.next()) {
-        val data = schema.schema.foldLeft(Map[String, DataValue]()) {
-          case (curMap, (key, dataType)) => dataType match {
-            case DataTypes.Integer => curMap + (key -> IntDataValue(resultSet.getInt(key)))
-            case DataTypes.String => curMap + (key -> StringDataValue(resultSet.getString(key)))
+        val data = select.columns match {
+          case Right(columns) => columns.foldLeft(Map[String, DataValue]()) {
+            case (curMap, key) => curMap + (key -> getDatum(key, schema.columns(key), resultSet))
+          }
+          case Left(_) => schema.columns.foldLeft(Map[String, DataValue]()) {
+            case (curMap, (key, dataType)) => curMap + (key -> getDatum(key, dataType, resultSet))
           }
         }
         val dataRow = DataRow(i, data)
@@ -54,6 +58,13 @@ class JdbcClient(connectionPool: JdbcConnectionPool) extends SqlLikeClient with 
         dataRows = dataRows :+ dataRow
       }
       dataRows
+    }
+  }
+
+  private def getDatum(key: String, dataType: DataTypes.Value, resultSet: ResultSet): DataValue = {
+    dataType match {
+      case DataTypes.Integer => IntDataValue(resultSet.getInt(key))
+      case DataTypes.String => StringDataValue(resultSet.getString(key))
     }
   }
 

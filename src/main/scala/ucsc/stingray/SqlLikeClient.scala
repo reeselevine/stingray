@@ -1,6 +1,7 @@
 package ucsc.stingray
 
 import ucsc.stingray.SqlLikeClient.DataRow
+import ucsc.stingray.StingrayApp.DataSchema
 import ucsc.stingray.sqllikedisl._
 
 import scala.concurrent.Future

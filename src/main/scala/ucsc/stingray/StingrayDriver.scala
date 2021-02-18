@@ -1,17 +1,17 @@
 package ucsc.stingray
 
-import ucsc.stingray.sqllikedisl.IsolationLevels.IsolationLevel
-
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import StingrayDriver._
+import ucsc.stingray.StingrayApp.{SetupConfig, TeardownConfig, Test}
 
-class StingrayDriver(app: StingrayApp) {
+class StingrayDriver(app: StingrayApp, config: DriverConfig) {
 
   def execute(): Future[Unit] = {
     for {
-      _ <- app.setup()
+      _ <- app.setup(config.setupConfig)
       _ <- run()
-      _ <- app.teardown()
+      _ <- app.teardown(TeardownConfig(config.setupConfig.tables.keys.toSeq))
     } yield {}
   }
 
@@ -21,10 +21,10 @@ class StingrayDriver(app: StingrayApp) {
     }
   }
 
-  private def run(iterationsLeft: Int, results: Map[IsolationLevel, Int]): Future[Map[IsolationLevel, Int]] = {
+  private def run(iterationsLeft: Int, results: Map[IsolationLevels.Value, Int]): Future[Map[IsolationLevels.Value, Int]] = {
     iterationsLeft match {
       case 0 => Future(results)
-      case _ => app.run().flatMap { result =>
+      case _ => app.run(config.test).flatMap { result =>
         val curValue = results.getOrElse(result.serializationLevel, 0)
         val newResults = results + (result.serializationLevel -> (curValue + 1))
         run(iterationsLeft - 1, newResults)
@@ -35,5 +35,17 @@ class StingrayDriver(app: StingrayApp) {
 
 object StingrayDriver {
 
-  def apply(app: StingrayApp): StingrayDriver = new StingrayDriver(app)
+  case class DriverConfig(setupConfig: SetupConfig, test: Test)
+
+  object IsolationLevels extends Enumeration {
+    type IsolationLevel = Value
+    val Serializable, SnapshotIsolation, Nada = Value
+
+    def jdbcValue(value: Value): Int = value match {
+      case Serializable => 8
+      case SnapshotIsolation => 4
+      case Nada => 0
+    }
+  }
+  def apply(app: StingrayApp, config: DriverConfig): StingrayDriver = new StingrayDriver(app, config)
 }

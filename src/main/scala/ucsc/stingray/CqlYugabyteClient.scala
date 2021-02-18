@@ -1,8 +1,9 @@
 package ucsc.stingray
 
-import com.datastax.driver.core.{Cluster, ResultSet}
+import com.datastax.driver.core.{Cluster, ResultSet, Row}
 import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture}
 import ucsc.stingray.SqlLikeClient.{DataRow, DataValue, IntDataValue, StringDataValue}
+import ucsc.stingray.StingrayApp.{DataSchema, DataTypes}
 import ucsc.stingray.sqllikedisl._
 
 import scala.concurrent.{Future, Promise}
@@ -47,16 +48,20 @@ class CqlYugabyteClient extends SqlLikeClient with SqlLikeUtils {
     session.executeAsync(buildSelect(s"$Keyspace.${select.tableName}", select)).asScala.map { resultSet =>
       var i = 0
       resultSet.all().asScala.map { row =>
-        val data = schema.schema.foldLeft(Map[String, DataValue]()) {
-          case (curMap, (key, dataType)) => dataType match {
-            case DataTypes.Integer => curMap + (key -> IntDataValue(row.getInt(key)))
-            case DataTypes.String => curMap + (key -> StringDataValue(row.getString(key)))
-          }
+        val data = schema.columns.foldLeft(Map[String, DataValue]()) {
+          case (curMap, (key, dataType)) => curMap + (key -> getDatum(key, dataType, row))
         }
         val dataRow = DataRow(i, data)
         i += 1
         dataRow
       }.toSeq
+    }
+  }
+
+  private def getDatum(key: String, dataType: DataTypes.Value, row: Row): DataValue = {
+    dataType match {
+      case DataTypes.Integer => IntDataValue(row.getInt(key))
+      case DataTypes.String => StringDataValue(row.getString(key))
     }
   }
 
