@@ -19,9 +19,9 @@ object Main {
       TestColumn("x", "r0", "litmustest0", 0),
       TestColumn("y", "r1", "litmustest1", 0),
       schema)
-    val connectionPool = new JdbcConnectionPool()
-    val sqlLikeClient = JdbcClient(connectionPool)
-    //val cqlYugabyteClient = CqlYugabyteClient()
+    //val connectionPool = new JdbcConnectionPool()
+    //val sqlLikeClient = JdbcClient(connectionPool)
+    val sqlLikeClient = CqlYugabyteClient()
     val stingrayApp = SqlLikeStingrayApp(sqlLikeClient)
     val stingrayDriver = StingrayDriver(stingrayApp, DriverConfig(setupConfig, test))
     println("Starting test")

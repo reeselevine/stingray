@@ -55,7 +55,7 @@ with SqlLikeDsl {
   private def runWriteSkew(test: WriteSkew): Future[Result] = {
     for {
       _ <- initializeData(test.x.table, test.dataSchema, test.x.primaryKeyValue)
-      _ <- initializeData(test.x.table, test.dataSchema, test.x.primaryKeyValue)
+      _ <- initializeData(test.y.table, test.dataSchema, test.y.primaryKeyValue)
       t1 = buildWriteSkewTransaction(test.x, test.y, test.dataSchema)
       t2 = buildWriteSkewTransaction(test.y, test.x, test.dataSchema)
       _ <- t1

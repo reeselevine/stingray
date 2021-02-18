@@ -48,8 +48,13 @@ class CqlYugabyteClient extends SqlLikeClient with SqlLikeUtils {
     session.executeAsync(buildSelect(s"$Keyspace.${select.tableName}", select)).asScala.map { resultSet =>
       var i = 0
       resultSet.all().asScala.map { row =>
-        val data = schema.columns.foldLeft(Map[String, DataValue]()) {
-          case (curMap, (key, dataType)) => curMap + (key -> getDatum(key, dataType, row))
+        val data = select.columns match {
+          case Right(columns) => columns.foldLeft(Map[String, DataValue]()) {
+            case (curMap, key) => curMap + (key -> getDatum(key, schema.columns(key), row))
+          }
+          case Left(_) => schema.columns.foldLeft(Map[String, DataValue]()) {
+            case (curMap, (key, dataType)) => curMap + (key -> getDatum(key, dataType, row))
+          }
         }
         val dataRow = DataRow(i, data)
         i += 1
