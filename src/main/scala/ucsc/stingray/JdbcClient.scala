@@ -85,24 +85,24 @@ class JdbcClient(connectionPool: JdbcConnectionPool) extends SqlLikeClient with 
     connection.setAutoCommit(false)
     connection.setTransactionIsolation(IsolationLevels.jdbcValue(isolationLevel))
     val stmt = connection.createStatement()
-    withRetries(connection, retries = 3)(block(stmt)) andThen { result =>
-      result match {
-        case Success(_) => connection.commit()
-        case Failure(_) => connection.rollback()
-      }
+    withRetries(connection, retries = 3)(block(stmt)) andThen { _ =>
       stmt.close()
       connection.close()
     }
   }
 
   def withRetries[T](connection: Connection, retries: Int)(block: => Future[T]): Future[T] = {
-    if (retries > 0) {
-      block recoverWith {
-        case _: PSQLException =>
-          connection.rollback()
-          withRetries(connection, retries - 1)(block)
-      }
-    } else block
+    block map { result =>
+      connection.commit()
+      result
+    } recoverWith {
+      case _: PSQLException if retries > 0 =>
+        connection.rollback()
+        withRetries(connection, retries - 1)(block)
+      case e =>
+        connection.rollback()
+        Future.failed(e)
+    }
   }
 }
 

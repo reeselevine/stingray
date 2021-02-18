@@ -1,19 +1,15 @@
 package ucsc.stingray
 
-
 import ucsc.stingray.StingrayApp._
 import ucsc.stingray.StingrayDriver.IsolationLevels
 import ucsc.stingray.sqllikedisl._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.util.control.NonFatal
 
 class SqlLikeStingrayApp(sqlLikeClient: SqlLikeClient) extends StingrayApp
 with SqlLikeDsl {
-
-  val TestTableName0 = "litmustest0"
-  val TestTableName1 = "litmustest1"
-  val PrimaryKeyField = "id"
 
   override def setup(setupConfig: SetupConfig): Future[Unit] = {
     Future.sequence(setupConfig.tables.map {
@@ -24,6 +20,7 @@ with SqlLikeDsl {
   override def run(test: Test): Future[Result] = {
     test match {
       case writeSkew: WriteSkew => runWriteSkew(writeSkew)
+      case dirtyWrite: DirtyWrite => runDirtyWrite(dirtyWrite)
     }
   }
 
@@ -31,40 +28,43 @@ with SqlLikeDsl {
     Future.sequence(teardownConfig.tables.map(table => sqlLikeClient.execute(dropTable(table))))
       .map(_ => sqlLikeClient.close())
   }
-  /*
 
-    private def runDirtyWrite(): Future[Result] = {
-      updateData().flatMap { _ =>
-        val t1 = buildDirtyWriteTransaction(1)
-        val t2 = buildDirtyWriteTransaction(2)
-        for {
-          _ <- t1
-          _ <- t2
-          (x, y) <- checkRow(TestTableName0)
-        } yield {
-          if (x == y) {
-            Result(IsolationLevels.Serializable)
-          } else {
-            Result(IsolationLevels.Nada)
-          }
-        }
+  private def runDirtyWrite(test: DirtyWrite): Future[Result] = {
+    for {
+      _ <- initializeData(test.x.table, test.dataSchema, test.x.primaryKeyValue)
+      _ <- initializeData(test.y.table, test.dataSchema, test.y.primaryKeyValue)
+      t1 = buildDirtyWriteTransaction(test.x, test.y, test)
+      t2 = buildDirtyWriteTransaction(test.y, test.x, test)
+      _ <- t1
+      _ <- t2
+      x <- getValue(test.x.table, test.dataSchema, test.x.field, test.x.primaryKeyValue)
+      y <- getValue(test.y.table, test.dataSchema, test.y.field, test.y.primaryKeyValue)
+    } yield {
+      println(s"result: x = $x, y = $y")
+      if (x == 1 && y ==1) {
+        Result(IsolationLevels.Nada)
+      } else {
+        Result(IsolationLevels.Serializable)
       }
     }
-  */
+  }
 
   private def runWriteSkew(test: WriteSkew): Future[Result] = {
     for {
       _ <- initializeData(test.x.table, test.dataSchema, test.x.primaryKeyValue)
       _ <- initializeData(test.y.table, test.dataSchema, test.y.primaryKeyValue)
-      t1 = buildWriteSkewTransaction(test.x, test.y, test.dataSchema)
-      t2 = buildWriteSkewTransaction(test.y, test.x, test.dataSchema)
+      t1 = buildWriteSkewTransaction(test.x, test.y, test.xResultField, test)
+      t2 = buildWriteSkewTransaction(test.y, test.x, test.yResultField, test)
       _ <- t1
       _ <- t2
-      x <- getValue(test.x.table, test.dataSchema, test.x.resultField, test.x.primaryKeyValue)
-      y <- getValue(test.y.table, test.dataSchema, test.y.resultField, test.y.primaryKeyValue)
+      r0 <- getValue(test.x.table, test.dataSchema, test.xResultField, test.x.primaryKeyValue)
+      r1 <- getValue(test.y.table, test.dataSchema, test.yResultField, test.y.primaryKeyValue)
+      x <- getValue(test.x.table, test.dataSchema, test.x.field, test.x.primaryKeyValue)
+      y <- getValue(test.y.table, test.dataSchema, test.y.field, test.y.primaryKeyValue)
     } yield {
-      println(s"result: x = $x, y = $y")
-      if (x == 0 && y == 0) {
+      println(s"result: r0 = $r0, r1 = $r1")
+      println(s"sanity check: x = $x, y = $y")
+      if (r0 == 0 && r1 == 0) {
         Result(IsolationLevels.SnapshotIsolation)
       } else {
         Result(IsolationLevels.Serializable)
@@ -72,22 +72,33 @@ with SqlLikeDsl {
     }
   }
 
-  private def buildWriteSkewTransaction(myColumn: TestColumn, otherColumn: TestColumn, schema: DataSchema): Future[Unit] = {
+  private def buildWriteSkewTransaction(
+                                         myColumn: TestColumn,
+                                         otherColumn: TestColumn,
+                                         resultField: String,
+                                         test: WriteSkew): Future[Unit] = {
     sqlLikeClient.execute(transaction()
+      .setIsolationLevel(test.isolationLevel)
       .add(update(myColumn.table)
         .withValues(Seq((myColumn.field, 1)))
-        .withCondition(s"${schema.primaryKey} = ${myColumn.primaryKeyValue}"))
+        .withCondition(s"${test.dataSchema.primaryKey} = ${myColumn.primaryKeyValue}"))
       .add(update(otherColumn.table)
-        .withValues(Seq((otherColumn.resultField, otherColumn.field)))
-        .withCondition(s"${schema.primaryKey} = ${otherColumn.primaryKeyValue}")))
+        .withValues(Seq((resultField, otherColumn.field)))
+        .withCondition(s"${test.dataSchema.primaryKey} = ${otherColumn.primaryKeyValue}")))
   }
 
-  private def buildDirtyWriteTransaction(value: Int): Future[Unit] = {
-    sqlLikeClient.execute(
-      transaction()
-        .setIsolationLevel(IsolationLevels.Serializable)
-        .add(update(TestTableName0).withValues(Seq(("x", value))).withCondition(s"$PrimaryKeyField = 0"))
-        .add(update(TestTableName0).withValues(Seq(("y" , value))).withCondition(s"$PrimaryKeyField = 0")))
+  private def buildDirtyWriteTransaction(
+                                          myColumn: TestColumn,
+                                          otherColumn: TestColumn,
+                                          test: DirtyWrite): Future[Unit] = {
+    sqlLikeClient.execute(transaction()
+      .setIsolationLevel(test.isolationLevel)
+      .add(update(myColumn.table)
+        .withValues(Seq((myColumn.field, 2)))
+        .withCondition(s"${test.dataSchema.primaryKey} = ${myColumn.primaryKeyValue}"))
+      .add(update(otherColumn.table)
+        .withValues(Seq((otherColumn.field, 1)))
+        .withCondition(s"${test.dataSchema.primaryKey} = ${otherColumn.primaryKeyValue}")))
   }
 
   private def getValue(tableName: String, schema: DataSchema, column: String, primaryKeyValue: Int): Future[Int] = {
@@ -106,13 +117,6 @@ with SqlLikeDsl {
     }.toSeq
     sqlLikeClient.execute(update(tableName).withValues(values)
       .withCondition(s"${schema.primaryKey} = $primaryKeyValue"))
-  }
-
-  private def updateData(): Future[Unit] = {
-    for {
-      _ <- sqlLikeClient.execute(update(TestTableName0).withValues(Seq(("x", 0), ("y", 0))).withCondition(s"$PrimaryKeyField = 0"))
-      _ <- sqlLikeClient.execute(update(TestTableName1).withValues(Seq(("x", 1), ("y", 0))).withCondition(s"$PrimaryKeyField = 0"))
-    } yield {}
   }
 
   private def setupTable(tableName: String, tableSetup: TableSetup): Future[Unit] = {

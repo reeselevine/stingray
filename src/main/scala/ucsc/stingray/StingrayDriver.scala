@@ -5,6 +5,8 @@ import scala.concurrent.Future
 import StingrayDriver._
 import ucsc.stingray.StingrayApp.{SetupConfig, TeardownConfig, Test}
 
+import scala.util.control.NonFatal
+
 class StingrayDriver(app: StingrayApp, config: DriverConfig) {
 
   def execute(): Future[Unit] = {
@@ -28,6 +30,10 @@ class StingrayDriver(app: StingrayApp, config: DriverConfig) {
         val curValue = results.getOrElse(result.serializationLevel, 0)
         val newResults = results + (result.serializationLevel -> (curValue + 1))
         run(iterationsLeft - 1, newResults)
+      } recoverWith {
+        case NonFatal(e) =>
+          println(s"test run failed. Reason: ${e.getMessage}")
+          run(iterationsLeft - 1, results)
       }
     }
   }

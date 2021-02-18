@@ -16,7 +16,10 @@ trait StingrayApp {
 
 object StingrayApp {
 
-  sealed trait Test
+  sealed trait Test {
+    def isolationLevel: IsolationLevels.Value
+    def dataSchema: DataSchema
+  }
 
   /**
    * Represents a test column for a test type.
@@ -24,12 +27,24 @@ object StingrayApp {
    * @param table The table which the column resides in.
    * @param primaryKeyValue The primary key value of the row of the column to be tested.
    */
-  case class TestColumn(field: String, resultField: String, table: String, primaryKeyValue: Int)
+  case class TestColumn(field: String, table: String, primaryKeyValue: Int)
 
   /**
    * Tests whether the write skew phenomenon is allowed under the given isolation level.
    */
-  case class WriteSkew(x: TestColumn, y: TestColumn, dataSchema: DataSchema) extends Test
+  case class WriteSkew(
+                        x: TestColumn,
+                        xResultField: String,
+                        y: TestColumn,
+                        yResultField: String,
+                        dataSchema: DataSchema,
+                        isolationLevel: IsolationLevels.Value) extends Test
+
+  case class DirtyWrite(
+                         x: TestColumn,
+                         y: TestColumn,
+                         dataSchema: DataSchema,
+                         isolationLevel: IsolationLevels.Value) extends Test
 
   /** Types of data that can be in a row. */
   object DataTypes extends Enumeration {
@@ -47,5 +62,4 @@ object StingrayApp {
   case class Result(serializationLevel: IsolationLevels.Value)
 
   case class TeardownConfig(tables: Seq[String])
-
 }
