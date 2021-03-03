@@ -6,7 +6,6 @@ import ucsc.stingray.sqllikedisl._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-import scala.util.control.NonFatal
 
 class SqlLikeStingrayApp(sqlLikeClient: SqlLikeClient) extends StingrayApp
 with SqlLikeDsl {
@@ -25,8 +24,9 @@ with SqlLikeDsl {
   }
 
   override def teardown(teardownConfig: TeardownConfig): Future[Unit] = {
-    Future.sequence(teardownConfig.tables.map(table => sqlLikeClient.execute(dropTable(table))))
-      .map(_ => sqlLikeClient.close())
+    teardownConfig.tables.foldLeft(Future({})) { (result, table) =>
+      result.flatMap(_ => sqlLikeClient.execute(dropTable(table)))
+    } map(_ => sqlLikeClient.close())
   }
 
   private def runDirtyWrite(test: DirtyWrite): Future[Result] = {
@@ -41,7 +41,7 @@ with SqlLikeDsl {
       y <- getValue(test.y.table, test.dataSchema, test.y.field, test.y.primaryKeyValue)
     } yield {
       println(s"result: x = $x, y = $y")
-      if (x == 1 && y ==1) {
+      if (x == 1 && y == 1) {
         Result(IsolationLevels.Nada)
       } else {
         Result(IsolationLevels.Serializable)
@@ -53,19 +53,23 @@ with SqlLikeDsl {
     for {
       _ <- initializeData(test.x.table, test.dataSchema, test.x.primaryKeyValue)
       _ <- initializeData(test.y.table, test.dataSchema, test.y.primaryKeyValue)
-      t1 = buildWriteSkewTransaction(test.x, test.y, test.xResultField, test)
-      t2 = buildWriteSkewTransaction(test.y, test.x, test.yResultField, test)
-      _ <- t1
-      _ <- t2
+      t1 = buildWriteSkewTransaction(test.x, test.y, test.yResultField, test)
+      t2 = buildWriteSkewTransaction(test.y, test.x, test.xResultField, test)
+      _ <- t1.map(_ => println("t1 successful"))
+      _ <- t2.map(_ => println("t2 successful"))
       r0 <- getValue(test.x.table, test.dataSchema, test.xResultField, test.x.primaryKeyValue)
       r1 <- getValue(test.y.table, test.dataSchema, test.yResultField, test.y.primaryKeyValue)
       x <- getValue(test.x.table, test.dataSchema, test.x.field, test.x.primaryKeyValue)
       y <- getValue(test.y.table, test.dataSchema, test.y.field, test.y.primaryKeyValue)
     } yield {
       println(s"result: r0 = $r0, r1 = $r1")
-      println(s"sanity check: x = $x, y = $y")
+      if (x != 1 || y != 1) {
+        throw TestFailedException(s"x: $x, y: $y, both must equal 1")
+      }
       if (r0 == 0 && r1 == 0) {
         Result(IsolationLevels.SnapshotIsolation)
+      } else if (r0 == 1 && r1 == 1) {
+        Result(IsolationLevels.Nada)
       } else {
         Result(IsolationLevels.Serializable)
       }

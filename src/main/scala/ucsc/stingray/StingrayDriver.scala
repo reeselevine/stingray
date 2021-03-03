@@ -3,7 +3,7 @@ package ucsc.stingray
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import StingrayDriver._
-import ucsc.stingray.StingrayApp.{SetupConfig, TeardownConfig, Test}
+import ucsc.stingray.StingrayApp.{SetupConfig, TeardownConfig, Test, TestFailedException}
 
 import scala.util.control.NonFatal
 
@@ -18,7 +18,7 @@ class StingrayDriver(app: StingrayApp, config: DriverConfig) {
   }
 
   private def run(): Future[Unit] = {
-    run(100, Map()).map { results =>
+    run(config.iterations, Map()).map { results =>
       println(results)
     }
   }
@@ -31,9 +31,15 @@ class StingrayDriver(app: StingrayApp, config: DriverConfig) {
         val newResults = results + (result.serializationLevel -> (curValue + 1))
         run(iterationsLeft - 1, newResults)
       } recoverWith {
+        case TestFailedException(message) =>
+          println(s"test run failed, stopping. Message: $message")
+          Future(results)
         case NonFatal(e) =>
           println(s"test run failed. Reason: ${e.getMessage}")
           run(iterationsLeft - 1, results)
+        case e =>
+          println("what the heck")
+          throw e
       }
     }
   }
@@ -41,7 +47,10 @@ class StingrayDriver(app: StingrayApp, config: DriverConfig) {
 
 object StingrayDriver {
 
-  case class DriverConfig(setupConfig: SetupConfig, test: Test)
+  case class DriverConfig(
+                           setupConfig: SetupConfig,
+                           test: Test,
+                           iterations: Int)
 
   object IsolationLevels extends Enumeration {
     type IsolationLevel = Value

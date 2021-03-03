@@ -14,7 +14,7 @@ object Main {
     "y" -> DataTypes.Integer,
     "r0" -> DataTypes.Integer,
     "r1" -> DataTypes.Integer))
-  val setupConfig = SetupConfig(Map("litmustest0" -> TableSetup(schema, 2), "litmustest1" -> TableSetup(schema, 1)))
+  val setupConfig = SetupConfig(Map("litmustest0" -> TableSetup(schema, 2), "litmustest1" -> TableSetup(schema, 2)))
 
   def main(args: Array[String]): Unit = {
     val config = ConfigFactory.load()
@@ -30,7 +30,7 @@ object Main {
       case "CQL" => CqlYugabyteClient()
     }
     val stingrayApp = SqlLikeStingrayApp(client)
-    val stingrayDriver = StingrayDriver(stingrayApp, DriverConfig(setupConfig, test))
+    val stingrayDriver = StingrayDriver(stingrayApp, DriverConfig(setupConfig, test, config.getInt("stingray.testIterations")))
     println("Starting test")
     Await.result(stingrayDriver.execute(), Duration.Inf)
     println("Test finished")

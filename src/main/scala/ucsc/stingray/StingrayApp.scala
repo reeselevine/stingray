@@ -62,4 +62,6 @@ object StingrayApp {
   case class Result(serializationLevel: IsolationLevels.Value)
 
   case class TeardownConfig(tables: Seq[String])
+
+  case class TestFailedException(message: String) extends Exception(message)
 }

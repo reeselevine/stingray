@@ -11,7 +11,7 @@ import ucsc.stingray.sqllikedisl.{CreateTableRequest, DropTableRequest, Select, 
 import scala.concurrent.blocking
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try}
 
 class JdbcClient(connectionPool: JdbcConnectionPool) extends SqlLikeClient with SqlLikeUtils {
 
@@ -81,13 +81,23 @@ class JdbcClient(connectionPool: JdbcConnectionPool) extends SqlLikeClient with 
 
   def withConnection[T](isolationLevel: IsolationLevels.Value = IsolationLevels.Serializable)
                        (block: Statement => Future[T]) = {
-    val connection = connectionPool.getConnection()
-    connection.setAutoCommit(false)
-    connection.setTransactionIsolation(IsolationLevels.jdbcValue(isolationLevel))
-    val stmt = connection.createStatement()
-    withRetries(connection, retries = 3)(block(stmt)) andThen { _ =>
-      stmt.close()
-      connection.close()
+    Try {
+      val connection = connectionPool.getConnection()
+      connection.setAutoCommit(false)
+      connection.setTransactionIsolation(IsolationLevels.jdbcValue(isolationLevel))
+      val stmt = connection.createStatement()
+      (connection, stmt)
+    } match {
+      case Success((connection, stmt)) =>
+        withRetries(connection, retries = 3)(block(stmt)) map { result =>
+          stmt.close()
+          connection.close()
+          result
+      }
+      case Failure(e) =>
+        println("failed to get connection")
+        println(e)
+        Future.failed(e)
     }
   }
 
@@ -96,10 +106,12 @@ class JdbcClient(connectionPool: JdbcConnectionPool) extends SqlLikeClient with 
       connection.commit()
       result
     } recoverWith {
-      case _: PSQLException if retries > 0 =>
+      case e: PSQLException if retries > 0 =>
+        println(e)
         connection.rollback()
         withRetries(connection, retries - 1)(block)
       case e =>
+        println(e)
         connection.rollback()
         Future.failed(e)
     }
