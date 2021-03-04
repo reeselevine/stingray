@@ -18,7 +18,12 @@ class StingrayDriver(app: StingrayApp, config: DriverConfig) {
   }
 
   private def run(): Future[Unit] = {
+    val start = System.currentTimeMillis()
     run(config.iterations, Map()).map { results =>
+      val end = System.currentTimeMillis()
+      val testTime = end - start
+      println(s"Test time: ${end - start} ms")
+      println(s"Iterations per second: ${config.iterations/(testTime/1000.0)}")
       println(results)
     }
   }
@@ -31,9 +36,6 @@ class StingrayDriver(app: StingrayApp, config: DriverConfig) {
         val newResults = results + (result.serializationLevel -> (curValue + 1))
         run(iterationsLeft - 1, newResults)
       } recoverWith {
-        case TestFailedException(message) =>
-          println(s"test run failed. Message: $message")
-          Future(results)
         case NonFatal(e) =>
           println(s"test run failed. Reason: ${e.getMessage}")
           run(iterationsLeft - 1, results)

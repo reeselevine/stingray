@@ -1,5 +1,6 @@
 package ucsc.stingray
 
+import ucsc.stingray.SqlLikeClient.IntDataValue
 import ucsc.stingray.StingrayApp._
 import ucsc.stingray.StingrayDriver.IsolationLevels
 import ucsc.stingray.sqllikedisl._
@@ -119,8 +120,19 @@ with SqlLikeDsl {
         case DataTypes.String => (column, "''")
       }
     }.toSeq
-    sqlLikeClient.execute(update(tableName).withValues(values)
-      .withCondition(s"${schema.primaryKey} = $primaryKeyValue"))
+    for {
+      _ <- sqlLikeClient.execute(update(tableName).withValues(values)
+        .withCondition(s"${schema.primaryKey} = $primaryKeyValue"))
+      data <- sqlLikeClient.execute(select(tableName).withColumns(schema.columns.keys.toSeq)
+        .withCondition(s"${schema.primaryKey} = $primaryKeyValue"), schema)
+    } yield {
+      data.head.data.values.collectFirst {
+        case IntDataValue(value) if value != 0 => true
+      } match {
+        case Some(_) => throw TestFailedException("Data not initialized correctly")
+        case None => {}
+      }
+    }
   }
 
   private def setupTable(tableName: String, tableSetup: TableSetup): Future[Unit] = {
