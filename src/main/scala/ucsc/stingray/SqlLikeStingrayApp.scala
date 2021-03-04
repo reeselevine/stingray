@@ -55,8 +55,8 @@ with SqlLikeDsl {
       _ <- initializeData(test.y.table, test.dataSchema, test.y.primaryKeyValue)
       t1 = buildWriteSkewTransaction(test.x, test.y, test.yResultField, test)
       t2 = buildWriteSkewTransaction(test.y, test.x, test.xResultField, test)
-      _ <- t1.map(_ => println("t1 successful"))
-      _ <- t2.map(_ => println("t2 successful"))
+      _ <- t1
+      _ <- t2
       r0 <- getValue(test.x.table, test.dataSchema, test.xResultField, test.x.primaryKeyValue)
       r1 <- getValue(test.y.table, test.dataSchema, test.yResultField, test.y.primaryKeyValue)
       x <- getValue(test.x.table, test.dataSchema, test.x.field, test.x.primaryKeyValue)

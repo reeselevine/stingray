@@ -32,7 +32,7 @@ class StingrayDriver(app: StingrayApp, config: DriverConfig) {
         run(iterationsLeft - 1, newResults)
       } recoverWith {
         case TestFailedException(message) =>
-          println(s"test run failed, stopping. Message: $message")
+          println(s"test run failed. Message: $message")
           Future(results)
         case NonFatal(e) =>
           println(s"test run failed. Reason: ${e.getMessage}")
